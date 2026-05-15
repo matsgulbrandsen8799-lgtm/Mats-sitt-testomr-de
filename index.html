@@ -27,9 +27,15 @@
     .screen.active{display:flex}
 
     /* ── Nav ── */
-    .header{padding:1.25rem 1rem .875rem;border-bottom:.5px solid var(--border)}
-    .header h1{font-size:22px;font-weight:600}
-    .header p{font-size:13px;color:var(--text2);margin-top:3px}
+    .header{padding:3rem 1.5rem 1.5rem;border-bottom:.5px solid var(--border);text-align:center}
+    .header h1{font-size:30px;font-weight:700;letter-spacing:-.5px}
+    .header p{font-size:14px;color:var(--text2);margin-top:6px}
+
+    /* ── Empty state (home) ── */
+    .home-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;text-align:center;gap:.5rem}
+    .home-empty-icon{font-size:60px;margin-bottom:.5rem;opacity:.55}
+    .home-empty-title{font-size:19px;font-weight:600;color:var(--text)}
+    .home-empty-sub{font-size:14px;color:var(--text2);line-height:1.6;max-width:240px}
     .nav-bar{display:flex;align-items:center;gap:10px;padding:1rem;border-bottom:.5px solid var(--border)}
     .back-btn{background:none;border:none;cursor:pointer;font-size:16px;color:var(--text2);display:flex;align-items:center;gap:4px;padding:0;white-space:nowrap;flex-shrink:0}
     .back-btn svg{width:18px;height:18px}
@@ -48,10 +54,12 @@
     .icon-btn:active{background:var(--bg3)}
     .icon-btn svg{width:20px;height:20px}
     .icon-btn.danger:active{color:var(--red)}
-    .home-btns{display:flex;gap:8px;padding:0 1rem 1rem}
-    .new-list-btn{flex:1;background:none;border:1.5px dashed var(--border2);border-radius:var(--r);padding:.875rem .5rem;font-size:14px;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
-    .new-list-btn:active{background:var(--bg2)}
-    .new-list-btn svg{width:18px;height:18px;flex-shrink:0}
+    .home-btns{display:flex;flex-direction:column;gap:10px;padding:1rem 1.25rem 2rem}
+    .new-list-btn{width:100%;background:var(--bg2);border:none;border-radius:var(--r);padding:1rem;font-size:16px;font-weight:500;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+    .new-list-btn:active{background:var(--bg3)}
+    .new-list-btn svg{width:20px;height:20px;flex-shrink:0}
+    .new-list-btn.primary-btn{background:var(--green);color:#fff}
+    .new-list-btn.primary-btn:active{opacity:.85}
     .empty-state{padding:3rem 1rem;text-align:center;color:var(--text2);font-size:15px}
 
     /* ── Edit / items ── */
@@ -147,16 +155,25 @@
 
   <!-- HOME -->
   <div id="home-screen" class="screen active">
-    <div class="header"><h1>Handlelister</h1><p>Velg en liste eller lag en ny</p></div>
+    <div class="header">
+      <h1>🛒 Handlelister</h1>
+      <p>Dine lagrede handlelister</p>
+    </div>
     <div class="list-container" id="saved-lists-container">
-      <div class="empty-state" id="no-lists-msg">Ingen lister ennå.<br>Trykk + for å lage din første!</div>
+      <div class="home-empty" id="no-lists-msg">
+        <div class="home-empty-icon">🛍️</div>
+        <div class="home-empty-title">Ingen lister ennå</div>
+        <div class="home-empty-sub">Lag din første handleliste eller importer fra Notater</div>
+      </div>
     </div>
     <div class="home-btns">
-      <button class="new-list-btn" onclick="newList()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Ny liste
+      <button class="new-list-btn primary-btn" onclick="newList()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Ny handleliste
       </button>
       <button class="new-list-btn" onclick="showScreen('import-screen')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="21" x2="12" y2="3"/></svg>Importer tekst
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="21" x2="12" y2="3"/></svg>
+        Importer fra tekst
       </button>
     </div>
   </div>
