@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="Handleliste"/>
+  <title>Handleliste</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#fff;--bg2:#f5f5f5;--bg3:#e8e8e8;
+      --text:#111;--text2:#666;--text3:#aaa;
+      --border:rgba(0,0,0,.12);--border2:rgba(0,0,0,.22);
+      --green:#1D9E75;--red:#E24B4A;
+      --r:12px;--rs:8px;
+    }
+    @media(prefers-color-scheme:dark){:root{
+      --bg:#1c1c1e;--bg2:#2c2c2e;--bg3:#3a3a3c;
+      --text:#f2f2f7;--text2:#aeaeb2;--text3:#636366;
+      --border:rgba(255,255,255,.12);--border2:rgba(255,255,255,.22);
+    }}
+    html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif;background:var(--bg);color:var(--text);-webkit-tap-highlight-color:transparent}
+    .app{max-width:430px;margin:0 auto;min-height:100%;display:flex;flex-direction:column}
+    .screen{display:none;flex-direction:column;flex:1}
+    .screen.active{display:flex}
+
+    /* ── Nav ── */
+    .header{padding:1.25rem 1rem .875rem;border-bottom:.5px solid var(--border)}
+    .header h1{font-size:22px;font-weight:600}
+    .header p{font-size:13px;color:var(--text2);margin-top:3px}
+    .nav-bar{display:flex;align-items:center;gap:10px;padding:1rem;border-bottom:.5px solid var(--border)}
+    .back-btn{background:none;border:none;cursor:pointer;font-size:16px;color:var(--text2);display:flex;align-items:center;gap:4px;padding:0;white-space:nowrap;flex-shrink:0}
+    .back-btn svg{width:18px;height:18px}
+    .nav-title{flex:1;min-width:0}
+    .list-name-input{width:100%;font-size:18px;font-weight:600;background:none;border:none;outline:none;color:var(--text)}
+    .list-name-input::placeholder{color:var(--text3);font-weight:400}
+
+    /* ── Home ── */
+    .list-container{padding:.875rem 1rem;flex:1;overflow-y:auto}
+    .saved-list{background:var(--bg2);border-radius:var(--r);padding:.875rem 1rem;margin-bottom:.625rem;display:flex;align-items:center;gap:10px}
+    .saved-list-info{flex:1;cursor:pointer;min-width:0}
+    .saved-list-name{font-size:16px;font-weight:500}
+    .saved-list-meta{font-size:12px;color:var(--text2);margin-top:3px}
+    .saved-list-actions{display:flex;gap:4px;flex-shrink:0}
+    .icon-btn{background:none;border:none;cursor:pointer;padding:7px;border-radius:8px;color:var(--text2);display:flex;align-items:center}
+    .icon-btn:active{background:var(--bg3)}
+    .icon-btn svg{width:20px;height:20px}
+    .icon-btn.danger:active{color:var(--red)}
+    .home-btns{display:flex;gap:8px;padding:0 1rem 1rem}
+    .new-list-btn{flex:1;background:none;border:1.5px dashed var(--border2);border-radius:var(--r);padding:.875rem .5rem;font-size:14px;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
+    .new-list-btn:active{background:var(--bg2)}
+    .new-list-btn svg{width:18px;height:18px;flex-shrink:0}
+    .empty-state{padding:3rem 1rem;text-align:center;color:var(--text2);font-size:15px}
+
+    /* ── Edit / items ── */
+    .items-scroll{flex:1;overflow-y:auto}
+    .item-row{display:flex;align-items:center;gap:6px;padding:.625rem 1rem;border-bottom:.5px solid var(--border);background:var(--bg);transition:opacity .15s}
+    .item-row.dragging{opacity:.4}
+    .item-row.drag-over{border-top:2px solid var(--green)}
+
+    /* drag handle – two horizontal lines */
+    .drag-handle{display:flex;flex-direction:column;gap:4px;padding:8px 4px;cursor:grab;flex-shrink:0;opacity:.35}
+    .drag-handle:active{cursor:grabbing;opacity:.7}
+    .drag-handle span{display:block;width:18px;height:2px;background:var(--text);border-radius:2px}
+
+    .item-text{flex:1;font-size:16px;min-width:0;cursor:pointer}
+    .item-qty-badge{font-size:13px;color:var(--text2);white-space:nowrap;flex-shrink:0;background:var(--bg3);padding:3px 8px;border-radius:6px;cursor:pointer}
+
+    /* inline edit overlay on item-row */
+    .item-edit-row{display:flex;align-items:center;gap:6px;padding:.5rem 1rem;border-bottom:.5px solid var(--border);background:var(--bg2)}
+    .item-edit-name{flex:1;border:1px solid var(--border2);border-radius:var(--rs);background:var(--bg);outline:none;font-size:15px;color:var(--text);padding:7px 10px;min-width:0;-webkit-appearance:none}
+    .item-edit-qty{flex:0 0 58px;width:58px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--bg);outline:none;font-size:15px;color:var(--text);padding:7px 6px;text-align:center;-webkit-appearance:none;-moz-appearance:textfield}
+    .item-edit-qty::-webkit-outer-spin-button,.item-edit-qty::-webkit-inner-spin-button{-webkit-appearance:none}
+    .item-edit-save{background:var(--green);border:none;border-radius:var(--rs);padding:7px 12px;font-size:14px;font-weight:600;color:#fff;cursor:pointer;white-space:nowrap}
+    .item-edit-cancel{background:none;border:1px solid var(--border2);border-radius:var(--rs);padding:7px 10px;font-size:14px;color:var(--text2);cursor:pointer}
+
+    .add-item-row{display:flex;align-items:center;gap:8px;padding:.75rem 1rem;border-top:.5px solid var(--border);border-bottom:.5px solid var(--border);background:var(--bg)}
+    .item-name-input{flex:1 1 0;min-width:0;border:1px solid var(--border2);border-radius:var(--rs);background:var(--bg2);outline:none;font-size:16px;color:var(--text);padding:10px 12px;-webkit-appearance:none}
+    .item-name-input::placeholder{color:var(--text3)}
+    .item-qty-input{flex:0 0 62px;width:62px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--bg2);outline:none;font-size:16px;color:var(--text);padding:10px 8px;text-align:center;-webkit-appearance:none;-moz-appearance:textfield}
+    .item-qty-input::-webkit-outer-spin-button,.item-qty-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+    .item-qty-input::placeholder{color:var(--text3);font-size:13px}
+    .add-btn{flex:0 0 auto;background:var(--green);border:none;border-radius:var(--rs);padding:10px 16px;font-size:15px;font-weight:500;cursor:pointer;color:#fff;white-space:nowrap}
+    .add-btn:active{opacity:.8}
+    .start-pick-btn{margin:1rem;border:1.5px solid var(--border2);border-radius:var(--r);padding:1rem;font-size:16px;font-weight:500;cursor:pointer;color:var(--text);background:none;display:flex;align-items:center;justify-content:center;gap:10px}
+    .start-pick-btn:active{background:var(--bg2)}
+    .start-pick-btn svg{width:22px;height:22px}
+
+    /* ── Import ── */
+    .import-body{flex:1;display:flex;flex-direction:column;padding:1rem;gap:.875rem;overflow-y:auto}
+    .import-label{font-size:14px;color:var(--text2);margin-bottom:6px;display:block}
+    .import-name-input{width:100%;border:1px solid var(--border2);border-radius:var(--rs);background:var(--bg2);outline:none;font-size:16px;color:var(--text);padding:10px 12px;-webkit-appearance:none}
+    .import-name-input::placeholder{color:var(--text3)}
+    .import-textarea{width:100%;min-height:180px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--bg2);outline:none;font-size:15px;color:var(--text);padding:12px;resize:none;font-family:inherit;line-height:1.7;-webkit-appearance:none}
+    .import-textarea::placeholder{color:var(--text3)}
+    .import-hint{font-size:12px;color:var(--text3);line-height:1.5}
+    .import-preview{background:var(--bg2);border-radius:var(--rs);padding:.75rem 1rem}
+    .import-preview-title{font-size:11px;color:var(--text2);margin-bottom:.5rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+    .import-preview-item{font-size:14px;color:var(--text);padding:5px 0;border-bottom:.5px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+    .import-preview-item:last-child{border-bottom:none}
+    .import-preview-qty{color:var(--text2);background:var(--bg3);padding:2px 8px;border-radius:5px;font-size:12px}
+    .import-btn-row{display:flex;gap:8px}
+    .import-confirm-btn{flex:1;background:var(--green);border:none;border-radius:var(--rs);padding:13px;font-size:16px;font-weight:600;cursor:pointer;color:#fff}
+    .import-confirm-btn:active{opacity:.85}
+    .import-confirm-btn:disabled{opacity:.35}
+    .import-cancel-btn{background:none;border:1px solid var(--border2);border-radius:var(--rs);padding:13px 20px;font-size:15px;cursor:pointer;color:var(--text2)}
+
+    /* ── Pick ── */
+    .pick-header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:1rem;border-bottom:.5px solid var(--border)}
+    .pick-title{font-size:17px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .pick-progress{font-size:13px;color:var(--text2);flex-shrink:0;background:var(--bg2);padding:4px 10px;border-radius:20px}
+    .pick-main{padding:2.5rem 1.5rem 1rem;text-align:center;user-select:none;-webkit-user-select:none}
+    .tap-hint{font-size:12px;color:var(--text3);margin-top:.5rem}
+    .pick-item-name{font-size:32px;font-weight:600;line-height:1.2;margin-bottom:.5rem}
+    .pick-item-qty{font-size:18px;color:var(--text2);margin-bottom:1.5rem}
+    .pick-status{font-size:14px;color:var(--text2);margin-bottom:1.5rem;min-height:22px}
+    .pick-status.reading{color:var(--green);font-weight:500}
+    .pick-controls{display:flex;gap:12px;justify-content:center;margin-bottom:.5rem}
+    .pick-ctrl-btn{background:var(--bg2);border:none;border-radius:var(--r);padding:.875rem 1.25rem;font-size:15px;cursor:pointer;color:var(--text);display:flex;align-items:center;gap:8px;font-weight:500}
+    .pick-ctrl-btn:active{background:var(--bg3)}
+    .pick-ctrl-btn svg{width:20px;height:20px}
+    .pick-ctrl-btn.primary{background:var(--green);color:#fff}
+    .pick-ctrl-btn.primary:active{opacity:.85}
+    .earphone-hint{margin:.75rem 1rem;background:var(--bg2);border-radius:var(--rs);padding:.75rem 1rem;font-size:13px;color:var(--text2);display:flex;align-items:center;gap:10px;line-height:1.4}
+    .earphone-hint svg{width:20px;height:20px;flex-shrink:0}
+    .pick-list{overflow-y:auto;padding:0 1rem;flex:1}
+    .pick-list-item{display:flex;align-items:center;gap:12px;padding:.75rem 0;border-bottom:.5px solid var(--border);font-size:15px}
+    .pick-list-item.done{opacity:.38;text-decoration:line-through}
+    .pick-list-item.current{font-weight:600;font-size:16px}
+    .check-circle{width:22px;height:22px;border-radius:50%;border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .check-circle.done{background:var(--green);border-color:var(--green);color:#fff;font-size:13px}
+    .check-circle.current{border-color:var(--text)}
+
+    /* ── Done ── */
+    .done-inner{padding:4rem 1.5rem;text-align:center;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center}
+    .done-icon{font-size:64px;margin-bottom:1rem}
+    .done-title{font-size:24px;font-weight:600;margin-bottom:.5rem}
+    .done-sub{font-size:15px;color:var(--text2);margin-bottom:2.5rem;line-height:1.5}
+    .done-btn{background:none;border:1.5px solid var(--border2);border-radius:var(--r);padding:1rem 2rem;font-size:16px;font-weight:500;cursor:pointer;color:var(--text)}
+    .done-btn:active{background:var(--bg2)}
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- HOME -->
+  <div id="home-screen" class="screen active">
+    <div class="header"><h1>Handlelister</h1><p>Velg en liste eller lag en ny</p></div>
+    <div class="list-container" id="saved-lists-container">
+      <div class="empty-state" id="no-lists-msg">Ingen lister ennå.<br>Trykk + for å lage din første!</div>
+    </div>
+    <div class="home-btns">
+      <button class="new-list-btn" onclick="newList()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Ny liste
+      </button>
+      <button class="new-list-btn" onclick="showScreen('import-screen')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="21" x2="12" y2="3"/></svg>Importer tekst
+      </button>
+    </div>
+  </div>
+
+  <!-- IMPORT -->
+  <div id="import-screen" class="screen">
+    <div class="nav-bar">
+      <button class="back-btn" onclick="showScreen('home-screen')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Tilbake
+      </button>
+      <div class="nav-title" style="font-size:17px;font-weight:600">Importer fra tekst</div>
+    </div>
+    <div class="import-body">
+      <div>
+        <label class="import-label">Navn på listen</label>
+        <input class="import-name-input" id="import-list-name" placeholder="F.eks. Ukeshandel"/>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <label class="import-label">Lim inn tekst fra Notater</label>
+        <textarea class="import-textarea" id="import-textarea"
+          placeholder="Epler&#10;Melk 2&#10;Kjøttdeig 800gx2&#10;Brød 3&#10;Yoghurt"></textarea>
+        <div class="import-hint">Tips: antall kan skrives som «Melk 2», «Brød x3» eller «Kjøttdeig 800gx2». Tomme linjer hoppes over.</div>
+      </div>
+      <div class="import-preview" id="import-preview" style="display:none">
+        <div class="import-preview-title">Forhåndsvisning</div>
+        <div id="import-preview-list"></div>
+      </div>
+      <div class="import-btn-row">
+        <button class="import-cancel-btn" onclick="showScreen('home-screen')">Avbryt</button>
+        <button class="import-confirm-btn" id="import-confirm-btn" onclick="confirmImport()" disabled>Lag liste</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDIT -->
+  <div id="edit-screen" class="screen">
+    <div class="nav-bar">
+      <button class="back-btn" onclick="saveAndGoHome()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Lister
+      </button>
+      <div class="nav-title">
+        <input class="list-name-input" id="list-name-input" placeholder="Navn på liste..."/>
+      </div>
+    </div>
+    <div class="items-scroll"><div id="items-list"></div></div>
+    <div class="add-item-row">
+      <input class="item-name-input" id="new-item-input" placeholder="Vare" autocomplete="off" autocorrect="on"/>
+      <input class="item-qty-input" id="new-qty-input" placeholder="Ant." type="number" min="1" inputmode="numeric"/>
+      <button class="add-btn" onclick="addItem()">Legg til</button>
+    </div>
+    <button class="start-pick-btn" id="start-pick-btn" onclick="startPicking()" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+      Start plukk med lyd
+    </button>
+  </div>
+
+  <!-- PICK -->
+  <div id="pick-screen" class="screen">
+    <div class="pick-header">
+      <button class="back-btn" onclick="stopPicking()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Avslutt
+      </button>
+      <span class="pick-title" id="pick-list-title"></span>
+      <span class="pick-progress" id="pick-progress"></span>
+    </div>
+    <div class="pick-main" id="pick-main-area">
+      <div class="pick-item-name" id="pick-item-name"></div>
+      <div class="pick-item-qty" id="pick-item-qty"></div>
+      <div class="pick-status" id="pick-status">Trykk start for å begynne</div>
+      <div class="tap-hint">Dobbelttrykk på skjermen for neste vare</div>
+      <div class="pick-controls">
+        <button class="pick-ctrl-btn" onclick="prevItem()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>Forrige
+        </button>
+        <button class="pick-ctrl-btn primary" onclick="togglePlayPause()">
+          <svg id="play-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <span id="play-label">Start</span>
+        </button>
+        <button class="pick-ctrl-btn" onclick="nextItem()">
+          Neste<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="earphone-hint">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+      Trykk «neste sang» på øreproppen – fungerer også med låst skjerm
+    </div>
+    <div class="pick-list" id="pick-list-items"></div>
+  </div>
+
+  <!-- DONE -->
+  <div id="done-screen" class="screen">
+    <div class="done-inner">
+      <div class="done-icon">✅</div>
+      <div class="done-title">Handleturen er ferdig!</div>
+      <div class="done-sub" id="done-sub"></div>
+      <button class="done-btn" onclick="showScreen('home-screen')">Tilbake til lister</button>
+    </div>
+  </div>
+
+</div>
+<script>
+/* ═══════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════ */
+let lists = JSON.parse(localStorage.getItem('handlelister') || '[]');
+let currentListIndex = -1;
+let pickIndex = 0, isPlaying = false;
+const synth = window.speechSynthesis;
+let utterance = null, audioCtx = null, silentSource = null;
+let editingItemIndex = -1; // which item row is open for inline edit
+
+/* ═══════════════════════════════════════════
+   AUDIO (silent loop for locked-screen support)
+═══════════════════════════════════════════ */
+function startSilentAudio() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
+    if (silentSource) { try { silentSource.stop(); } catch(e) {} }
+    silentSource = audioCtx.createBufferSource();
+    silentSource.buffer = buf; silentSource.loop = true;
+    const gain = audioCtx.createGain(); gain.gain.value = 0.001;
+    silentSource.connect(gain); gain.connect(audioCtx.destination);
+    silentSource.start();
+  } catch(e) {}
+}
+function stopSilentAudio() { try { if (silentSource) silentSource.stop(); } catch(e) {} silentSource = null; }
+
+/* ═══════════════════════════════════════════
+   HELPERS
+═══════════════════════════════════════════ */
+function saveLists() { localStorage.setItem('handlelister', JSON.stringify(lists)); }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function getVoice() {
+  const v = synth.getVoices();
+  return v.find(x => x.lang.startsWith('nb') || x.lang.startsWith('no')) || v.find(x => x.lang.startsWith('da')) || v.find(x => x.default) || v[0];
+}
+function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+
+/* ═══════════════════════════════════════════
+   IMPORT PARSER
+═══════════════════════════════════════════ */
+function parseLine(line) {
+  line = line.trim();
+  if (!line) return null;
+  let m;
+  // "Kjøttdeig 800gx2" or "Brød x3" — x<digits> at end = qty
+  m = line.match(/^(.+?)\s*[xX](\d+)\s*$/);
+  if (m) return { name: m[1].trim(), qty: m[2] };
+  // "Melk 2" — trailing integer = qty, but not if name ends in unit like g/kg/dl etc.
+  m = line.match(/^(.+?)\s+(\d+)\s*$/);
+  if (m && !/\d+(g|kg|dl|ml|l|stk|pk|ss|ts)$/i.test(m[1])) return { name: m[1].trim(), qty: m[2] };
+  return { name: line, qty: '' };
+}
+function parseText(text) { return text.split('\n').map(parseLine).filter(Boolean); }
+
+function updateImportPreview() {
+  const items = parseText(document.getElementById('import-textarea').value);
+  const prev = document.getElementById('import-preview');
+  const btn  = document.getElementById('import-confirm-btn');
+  if (!items.length) { prev.style.display = 'none'; btn.disabled = true; btn.textContent = 'Lag liste'; return; }
+  prev.style.display = 'block';
+  btn.disabled = false;
+  btn.textContent = 'Lag liste (' + items.length + ' varer)';
+  const listEl = document.getElementById('import-preview-list');
+  listEl.innerHTML = '';
+  items.forEach(it => {
+    const d = document.createElement('div'); d.className = 'import-preview-item';
+    d.innerHTML = '<span>' + esc(it.name) + '</span>' + (it.qty ? '<span class="import-preview-qty">' + esc(it.qty) + ' stk</span>' : '');
+    listEl.appendChild(d);
+  });
+}
+
+function confirmImport() {
+  const text = document.getElementById('import-textarea').value;
+  const name = document.getElementById('import-list-name').value.trim() || 'Importert liste';
+  const items = parseText(text);
+  if (!items.length) return;
+  lists.push({ name, items }); saveLists();
+  currentListIndex = lists.length - 1;
+  document.getElementById('import-textarea').value = '';
+  document.getElementById('import-list-name').value = '';
+  document.getElementById('import-preview').style.display = 'none';
+  document.getElementById('import-confirm-btn').disabled = true;
+  document.getElementById('import-confirm-btn').textContent = 'Lag liste';
+  document.getElementById('list-name-input').value = name;
+  editingItemIndex = -1;
+  renderItems(); showScreen('edit-screen');
+}
+
+/* ═══════════════════════════════════════════
+   HOME
+═══════════════════════════════════════════ */
+function renderHome() {
+  const c = document.getElementById('saved-lists-container');
+  c.querySelectorAll('.saved-list').forEach(x => x.remove());
+  document.getElementById('no-lists-msg').style.display = lists.length ? 'none' : 'block';
+  lists.forEach((list, i) => {
+    const div = document.createElement('div'); div.className = 'saved-list';
+    div.innerHTML =
+      `<div class="saved-list-info" onclick="openList(${i})">
+        <div class="saved-list-name">${esc(list.name||'Uten navn')}</div>
+        <div class="saved-list-meta">${list.items.length} vare${list.items.length!==1?'r':''}</div>
+      </div>
+      <div class="saved-list-actions">
+        <button class="icon-btn" onclick="openList(${i})">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        <button class="icon-btn danger" onclick="deleteList(event,${i})">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        </button>
+      </div>`;
+    c.appendChild(div);
+  });
+}
+function openList(i) { currentListIndex=i; document.getElementById('list-name-input').value=lists[i].name; editingItemIndex=-1; renderItems(); showScreen('edit-screen'); }
+function deleteList(e,i) { e.stopPropagation(); if(confirm('Slette «'+(lists[i].name||'Uten navn')+'»?')){lists.splice(i,1);saveLists();renderHome();} }
+function newList() { lists.push({name:'',items:[]}); saveLists(); currentListIndex=lists.length-1; document.getElementById('list-name-input').value=''; editingItemIndex=-1; renderItems(); showScreen('edit-screen'); setTimeout(()=>document.getElementById('list-name-input').focus(),150); }
+function saveAndGoHome() { if(currentListIndex>=0){lists[currentListIndex].name=document.getElementById('list-name-input').value.trim()||'Uten navn';saveLists();} renderHome(); showScreen('home-screen'); }
+
+/* ═══════════════════════════════════════════
+   EDIT — render items with drag handles + inline edit
+═══════════════════════════════════════════ */
+function renderItems() {
+  const c = document.getElementById('items-list'); c.innerHTML = '';
+  const items = lists[currentListIndex].items;
+  if (!items.length) {
+    c.innerHTML = '<div class="empty-state">Ingen varer ennå.<br>Legg til nedenfor.</div>';
+    document.getElementById('start-pick-btn').style.display = 'none';
+    return;
+  }
+  items.forEach((item, i) => {
+    if (i === editingItemIndex) {
+      // ── Inline edit row ──
+      const edit = document.createElement('div'); edit.className = 'item-edit-row';
+      edit.innerHTML =
+        `<input class="item-edit-name" id="edit-name-${i}" value="${esc(item.name)}" autocorrect="on"/>
+         <input class="item-edit-qty" id="edit-qty-${i}" value="${esc(item.qty)}" placeholder="Ant." type="number" min="1" inputmode="numeric"/>
+         <button class="item-edit-save" onclick="saveEditItem(${i})">Lagre</button>
+         <button class="item-edit-cancel" onclick="cancelEdit()">✕</button>`;
+      c.appendChild(edit);
+      setTimeout(() => { const el = document.getElementById('edit-name-'+i); if(el){el.focus();el.select();} }, 50);
+    } else {
+      // ── Normal row ──
+      const div = document.createElement('div');
+      div.className = 'item-row';
+      div.setAttribute('draggable', 'true');
+      div.dataset.index = i;
+      div.innerHTML =
+        `<div class="drag-handle" title="Dra for å flytte"><span></span><span></span></div>
+         <span class="item-text" onclick="startEditItem(${i})">${esc(item.name)}</span>
+         ${item.qty ? `<span class="item-qty-badge" onclick="startEditItem(${i})">${esc(item.qty)} stk</span>` : ''}
+         <button class="icon-btn danger" onclick="removeItem(${i})">
+           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+         </button>`;
+      // drag events
+      div.addEventListener('dragstart', onDragStart);
+      div.addEventListener('dragover',  onDragOver);
+      div.addEventListener('drop',      onDrop);
+      div.addEventListener('dragend',   onDragEnd);
+      // touch drag events
+      div.addEventListener('touchstart', onTouchStart, {passive:true});
+      c.appendChild(div);
+    }
+  });
+  document.getElementById('start-pick-btn').style.display = items.length ? 'flex' : 'none';
+}
+
+/* ── Inline edit ── */
+function startEditItem(i) { editingItemIndex = i; renderItems(); }
+function cancelEdit() { editingItemIndex = -1; renderItems(); }
+function saveEditItem(i) {
+  const nameEl = document.getElementById('edit-name-'+i);
+  const qtyEl  = document.getElementById('edit-qty-'+i);
+  const name = nameEl.value.trim();
+  if (!name) { nameEl.focus(); return; }
+  lists[currentListIndex].items[i].name = name;
+  lists[currentListIndex].items[i].qty  = qtyEl.value.trim();
+  saveLists(); editingItemIndex = -1; renderItems();
+}
+
+/* ── Add item ── */
+function addItem() {
+  const n = document.getElementById('new-item-input'), q = document.getElementById('new-qty-input');
+  const name = n.value.trim(); if (!name) { n.focus(); return; }
+  editingItemIndex = -1;
+  lists[currentListIndex].items.push({name, qty:q.value.trim()}); saveLists();
+  n.value = ''; q.value = ''; renderItems(); n.focus();
+}
+function removeItem(i) { lists[currentListIndex].items.splice(i,1); saveLists(); if(editingItemIndex===i)editingItemIndex=-1; renderItems(); }
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const id = document.activeElement && document.activeElement.id;
+    if (id === 'new-item-input' || id === 'new-qty-input') { addItem(); return; }
+    // save edit on Enter in edit fields
+    const m = id && id.match(/^edit-(name|qty)-(\d+)$/);
+    if (m) saveEditItem(parseInt(m[2]));
+  }
+  if (e.key === 'Escape') cancelEdit();
+});
+
+/* ═══════════════════════════════════════════
+   DRAG-TO-REORDER  (mouse/desktop)
+═══════════════════════════════════════════ */
+let dragSrcIndex = -1;
+function onDragStart(e) {
+  dragSrcIndex = parseInt(e.currentTarget.dataset.index);
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+function onDragOver(e) {
+  e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.item-row').forEach(r => r.classList.remove('drag-over'));
+  e.currentTarget.classList.add('drag-over');
+}
+function onDrop(e) {
+  e.preventDefault();
+  const targetIndex = parseInt(e.currentTarget.dataset.index);
+  if (dragSrcIndex === -1 || dragSrcIndex === targetIndex) return;
+  const items = lists[currentListIndex].items;
+  const [moved] = items.splice(dragSrcIndex, 1);
+  items.splice(targetIndex, 0, moved);
+  saveLists(); editingItemIndex = -1; renderItems();
+}
+function onDragEnd(e) {
+  e.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('.item-row').forEach(r => r.classList.remove('drag-over'));
+  dragSrcIndex = -1;
+}
+
+/* ═══════════════════════════════════════════
+   DRAG-TO-REORDER  (touch / iPhone)
+═══════════════════════════════════════════ */
+let touchDragIndex = -1;
+let touchClone = null;
+let touchOffsetY = 0;
+let touchScrollEl = null;
+
+function onTouchStart(e) {
+  // Only start drag if touch begins on the handle
+  const handle = e.target.closest('.drag-handle');
+  if (!handle) return;
+  e.preventDefault();
+
+  const row = e.currentTarget;
+  touchDragIndex = parseInt(row.dataset.index);
+  const touch = e.touches[0];
+  const rect = row.getBoundingClientRect();
+  touchOffsetY = touch.clientY - rect.top;
+  touchScrollEl = document.querySelector('.items-scroll');
+
+  // Create floating clone
+  touchClone = row.cloneNode(true);
+  touchClone.style.cssText = `
+    position:fixed;left:${rect.left}px;top:${rect.top}px;
+    width:${rect.width}px;height:${rect.height}px;
+    background:var(--bg2);box-shadow:0 4px 20px rgba(0,0,0,.2);
+    border-radius:var(--rs);z-index:9999;pointer-events:none;opacity:.95;
+  `;
+  document.body.appendChild(touchClone);
+  row.style.opacity = '0.3';
+
+  document.addEventListener('touchmove', onTouchMove, {passive:false});
+  document.addEventListener('touchend',  onTouchEnd);
+}
+
+function onTouchMove(e) {
+  if (touchDragIndex === -1 || !touchClone) return;
+  e.preventDefault();
+  const touch = e.touches[0];
+  const y = touch.clientY - touchOffsetY;
+  touchClone.style.top = y + 'px';
+
+  // Find which row we're hovering over
+  document.querySelectorAll('.item-row').forEach(r => r.classList.remove('drag-over'));
+  const rows = Array.from(document.querySelectorAll('.item-row'));
+  for (const r of rows) {
+    const rect = r.getBoundingClientRect();
+    if (touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+      r.classList.add('drag-over'); break;
+    }
+  }
+}
+
+function onTouchEnd(e) {
+  document.removeEventListener('touchmove', onTouchMove);
+  document.removeEventListener('touchend',  onTouchEnd);
+  if (touchDragIndex === -1) return;
+
+  const touch = e.changedTouches[0];
+  let targetIndex = touchDragIndex;
+
+  // Find drop target by touch position
+  const rows = Array.from(document.querySelectorAll('.item-row'));
+  for (const r of rows) {
+    const rect = r.getBoundingClientRect();
+    if (touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+      targetIndex = parseInt(r.dataset.index); break;
+    }
+  }
+
+  // Clean up
+  if (touchClone) { touchClone.remove(); touchClone = null; }
+  document.querySelectorAll('.item-row').forEach(r => {
+    r.classList.remove('drag-over'); r.style.opacity = '';
+  });
+
+  if (targetIndex !== touchDragIndex) {
+    const items = lists[currentListIndex].items;
+    const [moved] = items.splice(touchDragIndex, 1);
+    items.splice(targetIndex, 0, moved);
+    saveLists(); editingItemIndex = -1;
+  }
+  touchDragIndex = -1;
+  renderItems();
+}
+
+/* ═══════════════════════════════════════════
+   PICK
+═══════════════════════════════════════════ */
+function startPicking() {
+  lists[currentListIndex].name = document.getElementById('list-name-input').value.trim() || 'Uten navn'; saveLists();
+  pickIndex = 0; isPlaying = false;
+  document.getElementById('pick-list-title').textContent = lists[currentListIndex].name;
+  renderPickScreen(); showScreen('pick-screen'); startSilentAudio(); setupMediaSession();
+  setTimeout(() => speak(), 500);
+}
+function renderPickScreen() {
+  const items = lists[currentListIndex].items, item = items[pickIndex];
+  document.getElementById('pick-item-name').textContent = item.name;
+  document.getElementById('pick-item-qty').textContent = item.qty ? item.qty+' stykk' : '';
+  document.getElementById('pick-progress').textContent = `${pickIndex+1} / ${items.length}`;
+  const listEl = document.getElementById('pick-list-items'); listEl.innerHTML = '';
+  items.forEach((it,i) => {
+    const done=i<pickIndex, cur=i===pickIndex;
+    const div=document.createElement('div');
+    div.className='pick-list-item'+(done?' done':'')+(cur?' current':'');
+    div.innerHTML=`<div class="check-circle${done?' done':cur?' current':''}">${done?'✓':''}</div><span>${esc(it.name)}${it.qty?' – '+esc(it.qty)+' stk':''}</span>`;
+    listEl.appendChild(div);
+  });
+  if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({title:item.name,artist:'Handleliste',album:lists[currentListIndex].name});
+}
+const playIconPlay  = '<polygon points="5 3 19 12 5 21 5 3"/>';
+const playIconPause = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+function updatePlayBtn() { document.getElementById('play-icon-svg').innerHTML=isPlaying?playIconPause:playIconPlay; document.getElementById('play-label').textContent=isPlaying?'Pause':'Les opp'; }
+function speak() {
+  if (!synth) return; synth.cancel();
+  const item = lists[currentListIndex].items[pickIndex];
+  const text = item.qty ? `${item.name}, ${item.qty} stykk` : item.name;
+  utterance = new SpeechSynthesisUtterance(text); utterance.lang='nb-NO';
+  const voice=getVoice(); if(voice)utterance.voice=voice; utterance.rate=0.92;
+  utterance.onstart=()=>{ isPlaying=true; updatePlayBtn(); const s=document.getElementById('pick-status'); s.textContent='Leser opp…'; s.className='pick-status reading'; };
+  utterance.onend=()=>{ isPlaying=false; updatePlayBtn(); const s=document.getElementById('pick-status'); s.textContent='Klar – trykk Neste for neste vare'; s.className='pick-status'; if('mediaSession' in navigator)navigator.mediaSession.playbackState='paused'; };
+  utterance.onerror=()=>{ isPlaying=false; updatePlayBtn(); };
+  synth.speak(utterance);
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState='playing';
+}
+function togglePlayPause() { if(isPlaying){synth.cancel();isPlaying=false;updatePlayBtn();const s=document.getElementById('pick-status');s.textContent='Pauset';s.className='pick-status';}else speak(); }
+function nextItem() { synth.cancel(); const items=lists[currentListIndex].items; if(pickIndex<items.length-1){pickIndex++;renderPickScreen();setTimeout(()=>speak(),200);}else finishPicking(); }
+function prevItem() { synth.cancel(); if(pickIndex>0){pickIndex--;renderPickScreen();setTimeout(()=>speak(),200);} }
+function finishPicking() { synth.cancel(); stopSilentAudio(); document.getElementById('done-sub').textContent=`Alle ${lists[currentListIndex].items.length} varer plukket fra «${lists[currentListIndex].name}»`; showScreen('done-screen'); }
+function stopPicking() { synth.cancel(); isPlaying=false; stopSilentAudio(); showScreen('edit-screen'); }
+function setupMediaSession() {
+  if (!('mediaSession' in navigator)) return;
+  navigator.mediaSession.setActionHandler('nexttrack',     ()=>nextItem());
+  navigator.mediaSession.setActionHandler('previoustrack', ()=>prevItem());
+  navigator.mediaSession.setActionHandler('play',          ()=>speak());
+  navigator.mediaSession.setActionHandler('pause',         ()=>{synth.cancel();isPlaying=false;updatePlayBtn();});
+  navigator.mediaSession.playbackState='playing';
+}
+
+/* ═══════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════ */
+if (synth && synth.onvoiceschanged !== undefined) synth.onvoiceschanged = () => {};
+renderHome();
+document.getElementById('import-textarea').addEventListener('input', updateImportPreview);
+
+// Double-tap pick area = next item
+let lastTap = 0;
+document.getElementById('pick-main-area').addEventListener('touchend', function(e) {
+  const now = Date.now();
+  if (now - lastTap < 350) { e.preventDefault(); nextItem(); }
+  lastTap = now;
+}, {passive:false});
+</script>
+</body>
+</html>
