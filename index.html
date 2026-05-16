@@ -129,14 +129,17 @@
     /* ── Pick screen layout: sticky top + scrollable list + sticky bottom ── */
     #pick-screen{overflow:hidden}
 
-    .pick-sticky-top{flex-shrink:0;background:var(--bg);border-bottom:.5px solid var(--border);padding:.75rem 1rem .625rem;user-select:none;-webkit-user-select:none}
-    .pick-top-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem}
+    .pick-sticky-top{flex-shrink:0;background:var(--bg);border-bottom:.5px solid var(--border);padding:.5rem 1rem .5rem;user-select:none;-webkit-user-select:none}
+    .pick-top-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.25rem}
     .pick-stop-btn{background:none;border:none;cursor:pointer;font-size:14px;color:var(--text2);display:flex;align-items:center;gap:4px;padding:0}
     .pick-stop-btn svg{width:16px;height:16px}
     .pick-timer{font-size:14px;font-weight:600;color:var(--text2);font-variant-numeric:tabular-nums;letter-spacing:.03em}
-    .pick-item-name{font-size:26px;font-weight:700;line-height:1.2;text-align:center;margin:.25rem 0 .1rem}
-    .pick-item-qty{font-size:15px;color:var(--text2);text-align:center;min-height:20px;margin-bottom:.5rem}
-    .pick-hint{font-size:11px;color:var(--text3);text-align:center;margin:.375rem 0 .5rem;line-height:1.4}
+    .pick-item-name{font-size:26px;font-weight:700;line-height:1.2;text-align:center;margin:.1rem 0 .1rem}
+    .pick-item-qty{font-size:15px;color:var(--text2);text-align:center;min-height:16px;margin-bottom:.25rem}
+    .pick-hint{display:flex;flex-direction:column;gap:3px;margin:.2rem 0 .35rem}
+    .pick-hint-label{font-size:12px;color:var(--text2);text-align:center;margin-bottom:2px}
+    .pick-hint-row{display:flex;align-items:center;justify-content:center;gap:7px;font-size:12.5px;color:var(--text2);font-weight:500}
+    .pick-hint-icon{width:17px;height:17px;flex-shrink:0;opacity:.85}
     .pick-controls{display:flex;gap:8px;justify-content:center}
     .pick-ctrl-btn{background:var(--bg2);border:none;border-radius:var(--r);padding:.625rem 1rem;font-size:14px;cursor:pointer;color:var(--text);display:flex;align-items:center;gap:6px;font-weight:500}
     .pick-ctrl-btn:active{background:var(--bg3)}
@@ -154,7 +157,7 @@
     .check-circle.current{border-color:var(--green);border-width:2.5px}
 
     /* Sticky progress bar at bottom */
-    .pick-sticky-bottom{flex-shrink:0;background:var(--bg);padding:.625rem 1rem .875rem;border-top:.5px solid var(--border)}
+    .pick-sticky-bottom{flex-shrink:0;background:var(--bg);padding:.625rem 1rem calc(.875rem + env(safe-area-inset-bottom));border-top:.5px solid var(--border)}
     .pick-progress-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.375rem}
     .pick-progress-label{font-size:12px;color:var(--text2)}
     .pick-progress-count{font-size:12px;font-weight:600;color:var(--text2)}
@@ -271,7 +274,17 @@
       </div>
       <div class="pick-item-name" id="pick-item-name"></div>
       <div class="pick-item-qty" id="pick-item-qty"></div>
-      <div class="pick-hint">Dobbelttrykk på skjermen eller trykk Neste på øreproppen for å gå til neste vare</div>
+      <div class="pick-hint">
+        <div class="pick-hint-label">Slik går du til neste vare:</div>
+        <div class="pick-hint-row">
+          <svg class="pick-hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>
+          Dobbelttrykk på skjermen
+        </div>
+        <div class="pick-hint-row">
+          <svg class="pick-hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3z"/><path d="M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+          Neste-knapp på øreproppen
+        </div>
+      </div>
       <div class="pick-controls">
         <button class="pick-ctrl-btn" onclick="prevItem()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>Forrige
