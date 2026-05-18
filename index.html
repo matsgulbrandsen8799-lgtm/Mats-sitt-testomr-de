@@ -343,63 +343,82 @@ let timerSeconds = 0;
 ═══════════════════════════════════════════ */
 // Generate a soft pling WAV as a Blob URL – played before each item
 // This keeps iOS MediaSession alive and registers earphone buttons
-function makePlingUrl() {
-  const sampleRate = 44100;
-  const duration = 0.18; // seconds
-  const freq = 880;
-  const numSamples = Math.floor(sampleRate * duration);
-  const buf = new ArrayBuffer(44 + numSamples * 2);
-  const view = new DataView(buf);
-  // WAV header
-  const wr = (o, s) => { for (let i=0;i<s.length;i++) view.setUint8(o+i, s.charCodeAt(i)); };
-  wr(0,'RIFF'); view.setUint32(4, 36+numSamples*2, true);
+// Two audio elements:
+// 1. plingAudio: short pling before each item
+// 2. keepAliveAudio: near-silent looping tone to keep lock screen controls visible
+
+function makeWav(freq, duration, volume) {
+  const sr = 44100;
+  const n = Math.floor(sr * duration);
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(buf);
+  const wr = (o, s) => { for (let i=0;i<s.length;i++) v.setUint8(o+i, s.charCodeAt(i)); };
+  wr(0,'RIFF'); v.setUint32(4,36+n*2,true);
   wr(8,'WAVE'); wr(12,'fmt ');
-  view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
-  view.setUint32(24,sampleRate,true); view.setUint32(28,sampleRate*2,true);
-  view.setUint16(32,2,true); view.setUint16(34,16,true);
-  wr(36,'data'); view.setUint32(40,numSamples*2,true);
-  for (let i=0;i<numSamples;i++) {
-    const t = i/sampleRate;
-    const env = Math.exp(-t * 12); // fast decay
-    const sample = Math.sin(2*Math.PI*freq*t) * env * 0.18 * 32767;
-    view.setInt16(44+i*2, Math.round(sample), true);
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*2,true);
+  v.setUint16(32,2,true); v.setUint16(34,16,true);
+  wr(36,'data'); v.setUint32(40,n*2,true);
+  for (let i=0;i<n;i++) {
+    const t = i/sr;
+    const env = freq > 100 ? Math.exp(-t*10) : 1; // decay for pling, flat for keepalive
+    const sample = Math.sin(2*Math.PI*freq*t) * env * volume * 32767;
+    v.setInt16(44+i*2, Math.round(sample), true);
   }
   return URL.createObjectURL(new Blob([buf], {type:'audio/wav'}));
 }
 
 let plingUrl = null;
+let keepAliveUrl = null;
 let plingAudio = null;
+let keepAliveAudio = null;
 
 function startSilentAudio() {
   try {
-    if (!plingUrl) plingUrl = makePlingUrl();
-    if (!plingAudio) {
-      plingAudio = new Audio(plingUrl);
-      plingAudio.volume = 0.35;
+    // Pling audio
+    if (!plingUrl) plingUrl = makeWav(880, 0.18, 0.3);
+    if (!plingAudio) plingAudio = new Audio(plingUrl);
+
+    // Keep-alive: 30 seconds of very quiet 55Hz hum, looping
+    // Audible enough for iOS to keep lock screen controls, quiet enough not to bother
+    if (!keepAliveUrl) keepAliveUrl = makeWav(55, 30, 0.04);
+    if (!keepAliveAudio) {
+      keepAliveAudio = new Audio(keepAliveUrl);
+      keepAliveAudio.loop = true;
+      keepAliveAudio.volume = 1.0; // volume baked into WAV samples
     }
-    // Play pling once to activate MediaSession, then setupMediaSession grabs the element
-    plingAudio.currentTime = 0;
-    plingAudio.play().catch(()=>{});
+    keepAliveAudio.play().catch(()=>{});
+
+    // Set metadata immediately so lock screen shows app info
+    updateMediaMetadata();
   } catch(e) {}
+}
+
+function updateMediaMetadata() {
+  if (!('mediaSession' in navigator)) return;
+  const list = lists[currentListIndex];
+  const item = list ? list.items[pickIndex] : null;
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: item ? item.name : 'Handleliste',
+    artist: item ? (pickIndex+1) + ' av ' + list.items.length + ' varer' : '',
+    album: list ? list.name : 'Handleliste'
+  });
+  navigator.mediaSession.playbackState = 'playing';
 }
 
 function playPlingThenSpeak() {
   try {
-    if (!plingUrl) plingUrl = makePlingUrl();
-    if (!plingAudio) plingAudio = new Audio(plingUrl);
+    if (!plingAudio) { if (!plingUrl) plingUrl = makeWav(880, 0.18, 0.3); plingAudio = new Audio(plingUrl); }
     plingAudio.currentTime = 0;
-    plingAudio.volume = 0.35;
-    plingAudio.onended = () => {
-      plingAudio.onended = null;
-      speak();
-    };
-    plingAudio.play().catch(() => speak()); // fallback: speak directly if audio fails
+    plingAudio.onended = () => { plingAudio.onended = null; speak(); };
+    plingAudio.play().catch(() => speak());
+    updateMediaMetadata();
   } catch(e) { speak(); }
 }
 
 function stopSilentAudio() {
+  try { if (keepAliveAudio) { keepAliveAudio.pause(); keepAliveAudio.currentTime = 0; } } catch(e) {}
   try { if (plingAudio) { plingAudio.pause(); plingAudio.currentTime = 0; } } catch(e) {}
-  try { if (silentSource) silentSource.stop(); } catch(e) {}
   silentSource = null;
 }
 
@@ -787,14 +806,7 @@ function renderPickScreen() {
     if (cur) cur.scrollIntoView({block:'center', behavior:'smooth'});
   }, 60);
 
-  if ('mediaSession' in navigator) {
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: item.name,
-      artist: 'Handleliste – ' + (pickIndex+1) + ' av ' + items.length,
-      album: lists[currentListIndex].name
-    });
-    navigator.mediaSession.playbackState = 'playing';
-  }
+  updateMediaMetadata();
 }
 const playIconPlay  = '<polygon points="5 3 19 12 5 21 5 3"/>';
 const playIconPause = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
@@ -831,7 +843,7 @@ function setupMediaSession() {
     navigator.mediaSession.setActionHandler('pause',         ()=>{synth.cancel();isPlaying=false;updatePlayBtn();});
     navigator.mediaSession.setActionHandler('seekforward',   ()=>nextItem());
     navigator.mediaSession.setActionHandler('seekbackward',  ()=>prevItem());
-    navigator.mediaSession.playbackState = 'playing';
+    updateMediaMetadata();
   } catch(e) {}
 }
 
