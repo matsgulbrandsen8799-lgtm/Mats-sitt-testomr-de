@@ -341,27 +341,64 @@ let timerSeconds = 0;
 /* ═══════════════════════════════════════════
    AUDIO (silent loop for locked-screen support)
 ═══════════════════════════════════════════ */
+// Generate a soft pling WAV as a Blob URL – played before each item
+// This keeps iOS MediaSession alive and registers earphone buttons
+function makePlingUrl() {
+  const sampleRate = 44100;
+  const duration = 0.18; // seconds
+  const freq = 880;
+  const numSamples = Math.floor(sampleRate * duration);
+  const buf = new ArrayBuffer(44 + numSamples * 2);
+  const view = new DataView(buf);
+  // WAV header
+  const wr = (o, s) => { for (let i=0;i<s.length;i++) view.setUint8(o+i, s.charCodeAt(i)); };
+  wr(0,'RIFF'); view.setUint32(4, 36+numSamples*2, true);
+  wr(8,'WAVE'); wr(12,'fmt ');
+  view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
+  view.setUint32(24,sampleRate,true); view.setUint32(28,sampleRate*2,true);
+  view.setUint16(32,2,true); view.setUint16(34,16,true);
+  wr(36,'data'); view.setUint32(40,numSamples*2,true);
+  for (let i=0;i<numSamples;i++) {
+    const t = i/sampleRate;
+    const env = Math.exp(-t * 12); // fast decay
+    const sample = Math.sin(2*Math.PI*freq*t) * env * 0.18 * 32767;
+    view.setInt16(44+i*2, Math.round(sample), true);
+  }
+  return URL.createObjectURL(new Blob([buf], {type:'audio/wav'}));
+}
+
+let plingUrl = null;
+let plingAudio = null;
+
 function startSilentAudio() {
   try {
-    // Use a real <audio> element – iOS only activates MediaSession for <audio>/<video>
-    if (!silentAudio) {
-      // Minimal silent MP3 as base64 (100ms of silence)
-      const silentMp3 = 'data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAACAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV6Ojo6Ojo6Ojo6Ojo6Ojo6Ojo6Ojo6Ojo6P////////////////////////////////8AAAAATGF2YzU4LjU0AAAAAAAAAAAAAAAAJAYHAAAAAAAAASDs90QAAAAAAAAAAAAAAAAAAAAA//OEZAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCAgICAgICAgICAgICAgICAgICAgICAgICkpKSkpKSkpKSkpKSkpKSkpKSkpKSkpKSkpP////////////////////////////////8AAAAxTGF2YzU4LjU0AAAAAAAAAAAAACQAAAAAAAAAB6NHs0QAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
-      silentAudio = new Audio(silentMp3);
-      silentAudio.loop = true;
-      silentAudio.volume = 0.001;
+    if (!plingUrl) plingUrl = makePlingUrl();
+    if (!plingAudio) {
+      plingAudio = new Audio(plingUrl);
+      plingAudio.volume = 0.35;
     }
-    silentAudio.play().catch(() => {});
-
-    // Also keep Web Audio context alive for extra compatibility
-    try {
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-    } catch(e) {}
+    // Play pling once to activate MediaSession, then setupMediaSession grabs the element
+    plingAudio.currentTime = 0;
+    plingAudio.play().catch(()=>{});
   } catch(e) {}
 }
+
+function playPlingThenSpeak() {
+  try {
+    if (!plingUrl) plingUrl = makePlingUrl();
+    if (!plingAudio) plingAudio = new Audio(plingUrl);
+    plingAudio.currentTime = 0;
+    plingAudio.volume = 0.35;
+    plingAudio.onended = () => {
+      plingAudio.onended = null;
+      speak();
+    };
+    plingAudio.play().catch(() => speak()); // fallback: speak directly if audio fails
+  } catch(e) { speak(); }
+}
+
 function stopSilentAudio() {
-  try { if (silentAudio) { silentAudio.pause(); silentAudio.currentTime = 0; } } catch(e) {}
+  try { if (plingAudio) { plingAudio.pause(); plingAudio.currentTime = 0; } } catch(e) {}
   try { if (silentSource) silentSource.stop(); } catch(e) {}
   silentSource = null;
 }
@@ -720,7 +757,7 @@ function startPicking() {
 
       // Speak – synth is already warmed up so iOS won't block it
       startTimer();
-      speak();
+      playPlingThenSpeak();
     }, 400);
   }, 1800);
 }
@@ -774,9 +811,9 @@ function speak() {
   synth.speak(utterance);
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState='playing';
 }
-function togglePlayPause() { if(isPlaying){synth.cancel();isPlaying=false;updatePlayBtn();}else speak(); }
-function nextItem() { synth.cancel(); const items=lists[currentListIndex].items; if(pickIndex<items.length-1){pickIndex++;renderPickScreen();setTimeout(()=>speak(),200);}else finishPicking(); }
-function prevItem() { synth.cancel(); if(pickIndex>0){pickIndex--;renderPickScreen();setTimeout(()=>speak(),200);} }
+function togglePlayPause() { if(isPlaying){synth.cancel();isPlaying=false;updatePlayBtn();}else playPlingThenSpeak(); }
+function nextItem() { synth.cancel(); const items=lists[currentListIndex].items; if(pickIndex<items.length-1){pickIndex++;renderPickScreen();setTimeout(()=>playPlingThenSpeak(),200);}else finishPicking(); }
+function prevItem() { synth.cancel(); if(pickIndex>0){pickIndex--;renderPickScreen();setTimeout(()=>playPlingThenSpeak(),200);} }
 function finishPicking() {
   synth.cancel(); stopSilentAudio(); stopTimer();
   const t = timerFormatted();
@@ -790,7 +827,7 @@ function setupMediaSession() {
   try {
     navigator.mediaSession.setActionHandler('nexttrack',     ()=>nextItem());
     navigator.mediaSession.setActionHandler('previoustrack', ()=>prevItem());
-    navigator.mediaSession.setActionHandler('play',          ()=>speak());
+    navigator.mediaSession.setActionHandler('play',          ()=>playPlingThenSpeak());
     navigator.mediaSession.setActionHandler('pause',         ()=>{synth.cancel();isPlaying=false;updatePlayBtn();});
     navigator.mediaSession.setActionHandler('seekforward',   ()=>nextItem());
     navigator.mediaSession.setActionHandler('seekbackward',  ()=>prevItem());
