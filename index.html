@@ -333,7 +333,7 @@ let lists = JSON.parse(localStorage.getItem('handlelister') || '[]');
 let currentListIndex = -1;
 let pickIndex = 0, isPlaying = false;
 const synth = window.speechSynthesis;
-let utterance = null, audioCtx = null, silentSource = null;
+let utterance = null, audioCtx = null, silentSource = null, silentAudio = null;
 let editingItemIndex = -1;
 let timerInterval = null;
 let timerSeconds = 0;
@@ -343,18 +343,28 @@ let timerSeconds = 0;
 ═══════════════════════════════════════════ */
 function startSilentAudio() {
   try {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
-    if (silentSource) { try { silentSource.stop(); } catch(e) {} }
-    silentSource = audioCtx.createBufferSource();
-    silentSource.buffer = buf; silentSource.loop = true;
-    const gain = audioCtx.createGain(); gain.gain.value = 0.001;
-    silentSource.connect(gain); gain.connect(audioCtx.destination);
-    silentSource.start();
+    // Use a real <audio> element – iOS only activates MediaSession for <audio>/<video>
+    if (!silentAudio) {
+      // Minimal silent MP3 as base64 (100ms of silence)
+      const silentMp3 = 'data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAACAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV6Ojo6Ojo6Ojo6Ojo6Ojo6Ojo6Ojo6Ojo6P////////////////////////////////8AAAAATGF2YzU4LjU0AAAAAAAAAAAAAAAAJAYHAAAAAAAAASDs90QAAAAAAAAAAAAAAAAAAAAA//OEZAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCAgICAgICAgICAgICAgICAgICAgICAgICkpKSkpKSkpKSkpKSkpKSkpKSkpKSkpKSkpP////////////////////////////////8AAAAxTGF2YzU4LjU0AAAAAAAAAAAAACQAAAAAAAAAB6NHs0QAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+      silentAudio = new Audio(silentMp3);
+      silentAudio.loop = true;
+      silentAudio.volume = 0.001;
+    }
+    silentAudio.play().catch(() => {});
+
+    // Also keep Web Audio context alive for extra compatibility
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    } catch(e) {}
   } catch(e) {}
 }
-function stopSilentAudio() { try { if (silentSource) silentSource.stop(); } catch(e) {} silentSource = null; }
+function stopSilentAudio() {
+  try { if (silentAudio) { silentAudio.pause(); silentAudio.currentTime = 0; } } catch(e) {}
+  try { if (silentSource) silentSource.stop(); } catch(e) {}
+  silentSource = null;
+}
 
 /* ═══════════════════════════════════════════
    HELPERS
@@ -740,7 +750,14 @@ function renderPickScreen() {
     if (cur) cur.scrollIntoView({block:'center', behavior:'smooth'});
   }, 60);
 
-  if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({title:item.name,artist:'Handleliste',album:lists[currentListIndex].name});
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: item.name,
+      artist: 'Handleliste – ' + (pickIndex+1) + ' av ' + items.length,
+      album: lists[currentListIndex].name
+    });
+    navigator.mediaSession.playbackState = 'playing';
+  }
 }
 const playIconPlay  = '<polygon points="5 3 19 12 5 21 5 3"/>';
 const playIconPause = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
@@ -770,11 +787,15 @@ function finishPicking() {
 function stopPicking() { synth.cancel(); isPlaying=false; stopSilentAudio(); stopTimer(); showScreen('edit-screen'); }
 function setupMediaSession() {
   if (!('mediaSession' in navigator)) return;
-  navigator.mediaSession.setActionHandler('nexttrack',     ()=>nextItem());
-  navigator.mediaSession.setActionHandler('previoustrack', ()=>prevItem());
-  navigator.mediaSession.setActionHandler('play',          ()=>speak());
-  navigator.mediaSession.setActionHandler('pause',         ()=>{synth.cancel();isPlaying=false;updatePlayBtn();});
-  navigator.mediaSession.playbackState='playing';
+  try {
+    navigator.mediaSession.setActionHandler('nexttrack',     ()=>nextItem());
+    navigator.mediaSession.setActionHandler('previoustrack', ()=>prevItem());
+    navigator.mediaSession.setActionHandler('play',          ()=>speak());
+    navigator.mediaSession.setActionHandler('pause',         ()=>{synth.cancel();isPlaying=false;updatePlayBtn();});
+    navigator.mediaSession.setActionHandler('seekforward',   ()=>nextItem());
+    navigator.mediaSession.setActionHandler('seekbackward',  ()=>prevItem());
+    navigator.mediaSession.playbackState = 'playing';
+  } catch(e) {}
 }
 
 /* ═══════════════════════════════════════════
