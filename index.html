@@ -205,7 +205,7 @@
   <div class="pick-intro hidden" id="pick-intro">
     <div class="pick-intro-emoji">🛒</div>
     <div class="pick-intro-text">Gjør deg klar<br>til å plukke!</div>
-    <div class="pick-intro-sub" id="pick-intro-progress">Forbereder listen…</div>
+    <div class="pick-intro-sub">Starter om et øyeblikk…</div>
   </div>
 
   <!-- IMPORT -->
@@ -334,8 +334,6 @@ let currentListIndex = -1;
 let pickIndex = 0, isPlaying = false;
 const synth = window.speechSynthesis;
 let utterance = null, audioCtx = null, silentSource = null, silentAudio = null;
-let audioBlobs = []; // pre-recorded audio for each item
-let currentItemAudio = null; // currently playing <audio> element
 let editingItemIndex = -1;
 let timerInterval = null;
 let timerSeconds = 0;
@@ -435,8 +433,6 @@ function playPlingThenSpeak() {
 function stopSilentAudio() {
   try { if (keepAliveAudio) { keepAliveAudio.pause(); keepAliveAudio.currentTime = 0; } } catch(e) {}
   try { if (plingAudio) { plingAudio.pause(); plingAudio.currentTime = 0; } } catch(e) {}
-  try { if (currentItemAudio) { currentItemAudio.pause(); currentItemAudio = null; } } catch(e) {}
-  audioBlobs = [];
   mediaSessionReady = false;
   silentSource = null;
 }
@@ -762,58 +758,6 @@ function onTouchEnd(e) {
    PICK
 ═══════════════════════════════════════════ */
 
-/* ═══════════════════════════════════════════
-   PRE-RECORD all items via speechSynthesis + MediaRecorder
-   so they can play via <audio> on locked screen
-═══════════════════════════════════════════ */
-function recordItem(text) {
-  return new Promise((resolve) => {
-    try {
-      // Use Web Audio destination as MediaRecorder source
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-      const dest = audioCtx.createMediaStreamDestination();
-      const recorder = new MediaRecorder(dest.stream);
-      const chunks = [];
-
-      recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-      recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: recorder.mimeType });
-        resolve(URL.createObjectURL(blob));
-      };
-
-      // Route speechSynthesis through Web Audio
-      const utt = new SpeechSynthesisUtterance(text);
-      utt.lang = 'nb-NO';
-      const voice = getVoice();
-      if (voice) utt.voice = voice;
-      utt.rate = 0.92;
-      utt.volume = 1;
-
-      utt.onstart = () => recorder.start();
-      utt.onend   = () => { try { recorder.stop(); } catch(e) {} };
-      utt.onerror = () => { try { recorder.stop(); } catch(e) {} resolve(null); };
-
-      synth.speak(utt);
-    } catch(e) {
-      resolve(null); // fallback: will use synth directly
-    }
-  });
-}
-
-async function preRecordAllItems(items) {
-  audioBlobs = [];
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    const text = item.qty ? `${item.name}, ${item.qty} stykk` : item.name;
-    const url = await recordItem(text);
-    audioBlobs.push(url);
-    // Update intro progress text
-    const introEl = document.getElementById('pick-intro-progress');
-    if (introEl) introEl.textContent = `Forbereder ${i+1} av ${items.length} varer…`;
-  }
-}
-
 function startPicking() {
   lists[currentListIndex].name = document.getElementById('list-name-input').value.trim() || 'Uten navn'; saveLists();
   pickIndex = 0; isPlaying = false;
@@ -830,9 +774,8 @@ function startPicking() {
   intro.style.opacity = '1';
   intro.style.transition = '';
 
-  // Pre-record all items during intro display, then show pick screen
-  const items = lists[currentListIndex].items;
-  preRecordAllItems(items).then(() => {
+  // After 1.8s: fade out, show pick screen and speak
+  setTimeout(() => {
     intro.style.transition = 'opacity .4s ease';
     intro.style.opacity = '0';
 
@@ -850,7 +793,7 @@ function startPicking() {
       startTimer();
       playPlingThenSpeak();
     }, 400);
-  });
+  }, 1800);
 }
 function renderPickScreen() {
   const items = lists[currentListIndex].items, item = items[pickIndex];
@@ -884,43 +827,18 @@ const playIconPlay  = '<polygon points="5 3 19 12 5 21 5 3"/>';
 const playIconPause = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
 function updatePlayBtn() { document.getElementById('play-icon-svg').innerHTML=isPlaying?playIconPause:playIconPlay; document.getElementById('play-label').textContent=isPlaying?'Pause':'Les opp'; }
 function speak() {
-  // Stop any currently playing item audio
-  if (currentItemAudio) {
-    currentItemAudio.pause();
-    currentItemAudio.onended = null;
-    currentItemAudio = null;
-  }
-  synth.cancel();
-
-  const blobUrl = audioBlobs[pickIndex];
-
-  if (blobUrl) {
-    // Play pre-recorded audio via <audio> – works on locked screen!
-    const audio = new Audio(blobUrl);
-    currentItemAudio = audio;
-    audio.onplay  = () => { isPlaying = true;  updatePlayBtn(); if('mediaSession' in navigator) navigator.mediaSession.playbackState='playing'; };
-    audio.onended = () => { isPlaying = false; updatePlayBtn(); currentItemAudio = null; if('mediaSession' in navigator) navigator.mediaSession.playbackState='paused'; };
-    audio.onerror = () => { isPlaying = false; updatePlayBtn(); currentItemAudio = null; speakFallback(); };
-    audio.play().catch(() => speakFallback());
-  } else {
-    speakFallback();
-  }
-}
-
-function speakFallback() {
-  // Fallback to Web Speech API if blob not available
-  if (!synth) return;
+  if (!synth) return; synth.cancel();
   const item = lists[currentListIndex].items[pickIndex];
   const text = item.qty ? `${item.name}, ${item.qty} stykk` : item.name;
   utterance = new SpeechSynthesisUtterance(text); utterance.lang='nb-NO';
   const voice=getVoice(); if(voice)utterance.voice=voice; utterance.rate=0.92;
   utterance.onstart=()=>{ isPlaying=true; updatePlayBtn(); };
-  utterance.onend=()=>{ isPlaying=false; updatePlayBtn(); };
+  utterance.onend=()=>{ isPlaying=false; updatePlayBtn(); if('mediaSession' in navigator)navigator.mediaSession.playbackState='paused'; };
   utterance.onerror=()=>{ isPlaying=false; updatePlayBtn(); };
   synth.speak(utterance);
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState='playing';
 }
-function togglePlayPause() { if(isPlaying){ synth.cancel(); if(currentItemAudio){currentItemAudio.pause();currentItemAudio=null;} isPlaying=false; updatePlayBtn(); } else playPlingThenSpeak(); }
+function togglePlayPause() { if(isPlaying){synth.cancel();isPlaying=false;updatePlayBtn();}else playPlingThenSpeak(); }
 function nextItem() { synth.cancel(); const items=lists[currentListIndex].items; if(pickIndex<items.length-1){pickIndex++;renderPickScreen();setTimeout(()=>playPlingThenSpeak(),200);}else finishPicking(); }
 function prevItem() { synth.cancel(); if(pickIndex>0){pickIndex--;renderPickScreen();setTimeout(()=>playPlingThenSpeak(),200);} }
 function finishPicking() {
