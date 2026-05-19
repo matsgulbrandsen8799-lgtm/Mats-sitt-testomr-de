@@ -343,10 +343,6 @@ let timerSeconds = 0;
 ═══════════════════════════════════════════ */
 // Generate a soft pling WAV as a Blob URL – played before each item
 // This keeps iOS MediaSession alive and registers earphone buttons
-// Two audio elements:
-// 1. plingAudio: short pling before each item
-// 2. keepAliveAudio: near-silent looping tone to keep lock screen controls visible
-
 function makeWav(freq, duration, volume) {
   const sr = 44100;
   const n = Math.floor(sr * duration);
@@ -361,7 +357,7 @@ function makeWav(freq, duration, volume) {
   wr(36,'data'); v.setUint32(40,n*2,true);
   for (let i=0;i<n;i++) {
     const t = i/sr;
-    const env = freq > 100 ? Math.exp(-t*10) : 1; // decay for pling, flat for keepalive
+    const env = freq > 100 ? Math.exp(-t*10) : 1;
     const sample = Math.sin(2*Math.PI*freq*t) * env * volume * 32767;
     v.setInt16(44+i*2, Math.round(sample), true);
   }
@@ -372,38 +368,55 @@ let plingUrl = null;
 let keepAliveUrl = null;
 let plingAudio = null;
 let keepAliveAudio = null;
-
-function startSilentAudio() {
-  try {
-    // Pling audio
-    if (!plingUrl) plingUrl = makeWav(880, 0.18, 0.3);
-    if (!plingAudio) plingAudio = new Audio(plingUrl);
-
-    // Keep-alive: 30 seconds of very quiet 55Hz hum, looping
-    // Audible enough for iOS to keep lock screen controls, quiet enough not to bother
-    if (!keepAliveUrl) keepAliveUrl = makeWav(55, 30, 0.04);
-    if (!keepAliveAudio) {
-      keepAliveAudio = new Audio(keepAliveUrl);
-      keepAliveAudio.loop = true;
-      keepAliveAudio.volume = 1.0; // volume baked into WAV samples
-    }
-    keepAliveAudio.play().catch(()=>{});
-
-    // Set metadata immediately so lock screen shows app info
-    updateMediaMetadata();
-  } catch(e) {}
-}
+let mediaSessionReady = false;
 
 function updateMediaMetadata() {
   if (!('mediaSession' in navigator)) return;
   const list = lists[currentListIndex];
   const item = list ? list.items[pickIndex] : null;
+  // Fresh MediaMetadata object every time – required by iOS
   navigator.mediaSession.metadata = new MediaMetadata({
     title: item ? item.name : 'Handleliste',
     artist: item ? (pickIndex+1) + ' av ' + list.items.length + ' varer' : '',
     album: list ? list.name : 'Handleliste'
   });
+  // Force playing state – required for lock screen controls
   navigator.mediaSession.playbackState = 'playing';
+}
+
+function registerMediaHandlers() {
+  if (!('mediaSession' in navigator)) return;
+  // Register ONLY next/prev/play/pause – NO seek handlers (they block next/prev on iOS)
+  navigator.mediaSession.setActionHandler('nexttrack',     () => nextItem());
+  navigator.mediaSession.setActionHandler('previoustrack', () => prevItem());
+  navigator.mediaSession.setActionHandler('play',          () => playPlingThenSpeak());
+  navigator.mediaSession.setActionHandler('pause',         () => { synth.cancel(); isPlaying = false; updatePlayBtn(); });
+  // Explicitly null out seek handlers so iOS doesn't intercept them
+  try { navigator.mediaSession.setActionHandler('seekforward',  null); } catch(e) {}
+  try { navigator.mediaSession.setActionHandler('seekbackward', null); } catch(e) {}
+  try { navigator.mediaSession.setActionHandler('seekto',       null); } catch(e) {}
+}
+
+function startSilentAudio() {
+  try {
+    if (!plingUrl) plingUrl = makeWav(880, 0.18, 0.3);
+    if (!plingAudio) plingAudio = new Audio(plingUrl);
+
+    if (!keepAliveUrl) keepAliveUrl = makeWav(55, 30, 0.04);
+    if (!keepAliveAudio) {
+      keepAliveAudio = new Audio(keepAliveUrl);
+      keepAliveAudio.loop = true;
+      keepAliveAudio.volume = 1.0;
+
+      // KEY: register handlers inside onplaying – iOS requires this timing
+      keepAliveAudio.onplaying = () => {
+        registerMediaHandlers();
+        updateMediaMetadata();
+        mediaSessionReady = true;
+      };
+    }
+    keepAliveAudio.play().catch(() => {});
+  } catch(e) {}
 }
 
 function playPlingThenSpeak() {
@@ -412,6 +425,7 @@ function playPlingThenSpeak() {
     plingAudio.currentTime = 0;
     plingAudio.onended = () => { plingAudio.onended = null; speak(); };
     plingAudio.play().catch(() => speak());
+    // Update metadata every time a new item plays
     updateMediaMetadata();
   } catch(e) { speak(); }
 }
@@ -419,6 +433,7 @@ function playPlingThenSpeak() {
 function stopSilentAudio() {
   try { if (keepAliveAudio) { keepAliveAudio.pause(); keepAliveAudio.currentTime = 0; } } catch(e) {}
   try { if (plingAudio) { plingAudio.pause(); plingAudio.currentTime = 0; } } catch(e) {}
+  mediaSessionReady = false;
   silentSource = null;
 }
 
@@ -835,16 +850,9 @@ function finishPicking() {
 }
 function stopPicking() { synth.cancel(); isPlaying=false; stopSilentAudio(); stopTimer(); showScreen('edit-screen'); }
 function setupMediaSession() {
-  if (!('mediaSession' in navigator)) return;
-  try {
-    navigator.mediaSession.setActionHandler('nexttrack',     ()=>nextItem());
-    navigator.mediaSession.setActionHandler('previoustrack', ()=>prevItem());
-    navigator.mediaSession.setActionHandler('play',          ()=>playPlingThenSpeak());
-    navigator.mediaSession.setActionHandler('pause',         ()=>{synth.cancel();isPlaying=false;updatePlayBtn();});
-    navigator.mediaSession.setActionHandler('seekforward',   ()=>nextItem());
-    navigator.mediaSession.setActionHandler('seekbackward',  ()=>prevItem());
-    updateMediaMetadata();
-  } catch(e) {}
+  // Handlers are registered in keepAliveAudio.onplaying for correct iOS timing
+  // Just update metadata here
+  updateMediaMetadata();
 }
 
 /* ═══════════════════════════════════════════
